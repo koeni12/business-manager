@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Business Manager Pro</title>
+    <script>const _cw=console.warn.bind(console);console.warn=(...a)=>{if(typeof a[0]==="string"&&a[0].includes("cdn.tailwindcss.com"))return;_cw(...a)};</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -335,6 +336,7 @@ const INIT_GRADES = [
     {id:'g5',name:'Stagiaire',primePercent:5,maxSalary:800,order:4},
 ];
 const INIT_EMPLOYEES = [
+    {id:'e0',name:'Admin',grade:'Directeur',role:'admin',password:'admin',dob:'',contractUrl:'',iban:'',isServiceActive:false},
     {id:'e1',name:'Alex Martin',grade:'Directeur',role:'admin',password:'1234',dob:'1990-05-20',contractUrl:'',iban:'FR76 1234 5678 9012 3456 7890 123',isServiceActive:false},
     {id:'e2',name:'Sophie Durand',grade:'Manager',role:'admin',password:'1234',dob:'1992-08-14',contractUrl:'',iban:'',isServiceActive:false},
     {id:'e3',name:'Lucas Bernard',grade:'Senior',role:'user',password:'1234',dob:'1995-11-03',contractUrl:'',iban:'',isServiceActive:false},
