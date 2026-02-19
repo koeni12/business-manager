@@ -1,9 +1,18 @@
 <!DOCTYPE html>
+<!-- 
+  ✅ VERCEL DEPLOYMENT
+  1. Renommez ce fichier en  index.html
+  2. Placez-le à la racine de votre repo
+  3. Dans Vercel → New Project → importez le repo
+  4. Framework: Other / Static HTML → Deploy
+  Toutes les données sont stockées en localStorage du navigateur.
+-->
+
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Manager Pro</title>
+    <title>Business Manager Pro — Vercel Ready</title>
     <script>const _cw=console.warn.bind(console);console.warn=(...a)=>{if(typeof a[0]==="string"&&a[0].includes("cdn.tailwindcss.com"))return;_cw(...a)};</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -224,9 +233,7 @@
             "lucide-react": "https://esm.sh/lucide-react@0.263.1?external=react",
             "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
             "jspdf": "https://esm.sh/jspdf@2.5.1",
-            "firebase/app": "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js",
-            "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js",
-            "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"
+            
         }
     }
     </script>
@@ -249,28 +256,14 @@ import {
 } from 'lucide-react';
 import { AreaChart, Area, BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell, Legend } from 'recharts';
 import { jsPDF } from 'jspdf';
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, onSnapshot, getDocs, writeBatch } from "firebase/firestore";
+
 
 // =============================================
-// FIREBASE SETUP
+// STORAGE — localStorage uniquement (Vercel-ready)
 // =============================================
-let app, auth, db, appId = 'bm-default-2024';
-try {
-    const fc = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-        apiKey: "AIzaSyB-EcSw-43CbNDYg_q5BLU9jL7HjGhZf78",
-        authDomain: "southside-custom.firebaseapp.com",
-        projectId: "southside-custom",
-        storageBucket: "southside-custom.firebasestorage.app",
-        messagingSenderId: "89724035455",
-        appId: "1:89724035455:web:b50bb76124829175ccba4a"
-    };
-    if (typeof __app_id !== 'undefined') appId = __app_id;
-    app = initializeApp(fc);
-    auth = getAuth(app);
-    db = getFirestore(app);
-} catch(e) { console.error("Firebase:", e); }
+// Pas de Firebase : tout est persisté en localStorage.
+// Déployez ce fichier sur Vercel comme asset statique.
+
 
 // =============================================
 // CONSTANTS & HELPERS
@@ -505,12 +498,10 @@ const genExcelCSV = (invoices, filename='export.csv') => {
 function App() {
     // ---- AUTH ----
     const [currentUser, setCurrentUser] = useState(null);
-    const [authUser, setAuthUser] = useState(null);
     const [authMode, setAuthMode] = useState('login');
     const [loginForm, setLoginForm] = useState({username:'',password:''});
     const [loginError, setLoginError] = useState('');
     const [stayConnected, setStayConnected] = useState(false);
-    const [isOffline, setIsOffline] = useState(false);
 
     // ---- DATA ----
     const [theme, setTheme] = useState(INIT_THEME);
@@ -583,14 +574,9 @@ function App() {
         if(c2) document.documentElement.style.setProperty('--accent2',c2.hex);
     },[theme.primaryColor,theme.secondaryColor]);
 
-    // ====== FIREBASE AUTH ======
-    useEffect(()=>{
-        if(!auth) return;
-        (async()=>{ try{ if(typeof __initial_auth_token!=='undefined'&&__initial_auth_token) await signInWithCustomToken(auth,__initial_auth_token); else await signInAnonymously(auth); }catch(e){ setIsOffline(true); loadOffline(); }})();
-        onAuthStateChanged(auth,u=>setAuthUser(u));
-    },[]);
 
-    const loadOffline = useCallback(()=>{
+
+    const loadLocal = useCallback(()=>{
         setEmployees(ls.get('bm_employees',INIT_EMPLOYEES));
         setInvoices(ls.get('bm_invoices',INIT_INVOICES));
         setContracts(ls.get('bm_contracts',INIT_CONTRACTS));
@@ -604,44 +590,19 @@ function App() {
         setLoading(false);
     },[]);
 
-    // ====== FIRESTORE SUBSCRIPTIONS ======
-    useEffect(()=>{
-        if(isOffline||!authUser) return;
-        const base = ['artifacts',appId,'public','data'];
-        const unsubs=[];
-        const onErr = e=>{ if(e.code==='permission-denied'){ setIsOffline(true); loadOffline(); } };
-        const sub=(path,setter,seed,transform)=>{
-            if(path.length===1){ // doc
-                const unsub=onSnapshot(doc(db,...base,'settings',path[0]),(s)=>{ if(s.exists()) setter(transform?transform(s.data()):s.data()); else setDoc(doc(db,...base,'settings',path[0]),seed); },onErr);
-                unsubs.push(unsub);
-            } else {
-                const unsub=onSnapshot(collection(db,...base,path[0]),(s)=>{ const data=s.docs.map(d=>({...d.data(),docId:d.id})); setter(data.length?data:[]); if(s.empty&&seed) seed.forEach(e=>addDoc(collection(db,...base,path[0]),e)); },onErr);
-                unsubs.push(unsub);
-            }
-        };
-        sub(['invoices'],v=>setInvoices(v.sort((a,b)=>new Date(b.date)-new Date(a.date))),INIT_INVOICES);
-        sub(['employees'],v=>setEmployees(v),INIT_EMPLOYEES);
-        sub(['contracts'],v=>setContracts(v),INIT_CONTRACTS);
-        sub(['applications'],v=>setApplications(v),INIT_APPLICATIONS);
-        sub(['tasks'],v=>setTasks(v),[]);
-        sub(['grades'],(v)=>setGrades(v.list||INIT_GRADES),null,d=>d);
-        sub(['theme'],v=>setTheme(v.data||INIT_THEME),null,d=>({data:d.data||INIT_THEME}));
-        sub(['config'],v=>setConfig(v.data||INIT_CONFIG),null,d=>({data:d.data||INIT_CONFIG}));
-        sub(['messages'],v=>setCustomMessages(v.data||INIT_MESSAGES),null,d=>({data:d.data||INIT_MESSAGES}));
-        setTimeout(()=>setLoading(false),800);
-        return ()=>unsubs.forEach(u=>u());
-    },[authUser,isOffline]);
+    // ====== INIT DEPUIS LOCALSTORAGE ======
+    useEffect(()=>{ loadLocal(); },[]);
 
     // Offline persistence
-    useEffect(()=>{ if(isOffline){ls.set('bm_employees',employees);} },[employees,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_invoices',invoices);} },[invoices,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_contracts',contracts);} },[contracts,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_applications',applications);} },[applications,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_tasks',tasks);} },[tasks,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_grades',grades);} },[grades,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_theme',theme);} },[theme,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_config',config);} },[config,isOffline]);
-    useEffect(()=>{ if(isOffline){ls.set('bm_messages',customMessages);} },[customMessages,isOffline]);
+    useEffect(()=>{ ls.set('bm_employees',employees); },[employees]);
+    useEffect(()=>{ ls.set('bm_invoices',invoices); },[invoices]);
+    useEffect(()=>{ ls.set('bm_contracts',contracts); },[contracts]);
+    useEffect(()=>{ ls.set('bm_applications',applications); },[applications]);
+    useEffect(()=>{ ls.set('bm_tasks',tasks); },[tasks]);
+    useEffect(()=>{ ls.set('bm_grades',grades); },[grades]);
+    useEffect(()=>{ ls.set('bm_theme',theme); },[theme]);
+    useEffect(()=>{ ls.set('bm_config',config); },[config]);
+    useEffect(()=>{ ls.set('bm_messages',customMessages); },[customMessages]);
     useEffect(()=>{ ls.set('bm_service_logs',serviceLogs); },[serviceLogs]);
 
     // ====== AUTO-LOGIN ======
@@ -667,13 +628,6 @@ function App() {
         return ()=>clearInterval(t);
     },[isServiceActive]);
 
-    // ====== FIRESTORE HELPERS ======
-    const base = ['artifacts',appId,'public','data'];
-    const fsAdd = async(col,data)=>{ if(isOffline) return {id:`local_${Date.now()}`}; return addDoc(collection(db,...base,col),data); };
-    const fsUpdate = async(col,docId,data)=>{ if(isOffline) return; return updateDoc(doc(db,...base,col,docId),data); };
-    const fsDelete = async(col,docId)=>{ if(isOffline) return; return deleteDoc(doc(db,...base,col,docId)); };
-    const fsSetting = async(key,val)=>{ if(isOffline) return; return setDoc(doc(db,...base,'settings',key),{data:val}); };
-    const fsSettingRaw = async(key,val)=>{ if(isOffline) return; return setDoc(doc(db,...base,'settings',key),val); };
 
     // ====== TOAST ======
     const toastRef=useRef(null);
@@ -792,15 +746,13 @@ function App() {
             setIsServiceActive(false); setServiceStartTime(null); setServiceTimer(0);
             ls.set('bm_svc_active','false');
             // Update Firestore
-            const emp=employees.find(e=>e.id===currentUser.id);
-            if(emp?.docId) fsUpdate('employees',emp.docId,{isServiceActive:false});
+
             showToast('Fin de service enregistrée.');
         } else {
             const start=Date.now();
             setIsServiceActive(true); setServiceStartTime(start);
             ls.set('bm_svc_active','true'); ls.set('bm_svc_start',start);
-            const emp=employees.find(e=>e.id===currentUser.id);
-            if(emp?.docId) fsUpdate('employees',emp.docId,{isServiceActive:true});
+
             showToast('Prise de service ✅');
         }
     },[isServiceActive,serviceStartTime,currentUser,employees,showToast]);
@@ -814,176 +766,129 @@ function App() {
         const bonusRate=svc?.bonusPercent!=null?svc.bonusPercent:(grd?.primePercent||0);
         const bonus=m.profit>0?m.profit*bonusRate/100:0;
         const inv={date:new Date().toISOString(),client:newInvoice.client,type:newInvoice.type,price,profit:m.profit,bonus,employeeId:currentUser.id,employeeName:currentUser.name};
-        if(isOffline){
-            setInvoices(p=>[{...inv,id:`local_${Date.now()}`},...p]);
-        } else {
-            await fsAdd('invoices',inv);
-        }
+        setInvoices(p=>[{...inv,id:`inv_${Date.now()}`},...p]);
         setNewInvoice({client:'',type:'',price:''});
         addAppNotif(`Nouvelle facture — ${newInvoice.client} — ${fmtMoney(price)} €`);
         showToast('Facture enregistrée !');
-    },[newInvoice,currentUser,grades,config,calcMetrics,isOffline,showToast,addAppNotif]);
+    },[newInvoice,currentUser,grades,config,calcMetrics,showToast,addAppNotif]);
 
     const handleDeleteInvoice = useCallback(async id=>{
         if(!window.confirm('Supprimer cette facture ?')) return;
-        const inv=invoices.find(i=>i.id===id);
-        if(isOffline) setInvoices(p=>p.filter(i=>i.id!==id));
-        else { const did=inv?.docId||id; await fsDelete('invoices',did); setInvoices(p=>p.filter(i=>i.id!==id)); }
+        setInvoices(p=>p.filter(i=>i.id!==id));
         showToast('Facture supprimée.','warning');
-    },[invoices,isOffline,showToast]);
+    },[invoices,showToast]);
 
     const handleUpdateInvoiceClient = useCallback(async id=>{
         if(!editClientName.trim()) return;
-        if(isOffline) setInvoices(p=>p.map(i=>i.id===id?{...i,client:editClientName}:i));
-        else {
-            const inv=invoices.find(i=>i.id===id);
-            const did=inv?.docId||id;
-            await fsUpdate('invoices',did,{client:editClientName});
-            setInvoices(p=>p.map(i=>i.id===id?{...i,client:editClientName}:i));
-        }
+        setInvoices(p=>p.map(i=>i.id===id?{...i,client:editClientName}:i));
         setEditingInvoiceId(null); setEditClientName('');
         showToast('Nom modifié.');
-    },[editClientName,invoices,isOffline,showToast]);
+    },[editClientName,invoices,showToast]);
 
     const handleAddEmployee = useCallback(async()=>{
         if(!newEmployee.name||!newEmployee.grade){ showToast('Nom et grade requis.','error'); return; }
         const emp={...newEmployee,id:`e${Date.now()}`,isServiceActive:false};
-        if(isOffline) setEmployees(p=>[...p,emp]);
-        else await fsAdd('employees',emp);
+        setEmployees(p=>[...p,emp]);
         setNewEmployee({name:'',grade:'',dob:'',contractUrl:'',iban:'',role:'user',password:'1234'});
         showToast('Employé ajouté.');
-    },[newEmployee,isOffline,showToast]);
+    },[newEmployee,showToast]);
 
     const handleSaveEmployee = useCallback(async()=>{
-        if(isOffline) setEmployees(p=>p.map(e=>e.id===editingEmployee.id?editingEmployee:e));
-        else { const did=editingEmployee.docId||editingEmployee.id; await fsUpdate('employees',did,editingEmployee); setEmployees(p=>p.map(e=>e.id===editingEmployee.id?editingEmployee:e)); }
+        setEmployees(p=>p.map(e=>e.id===editingEmployee.id?editingEmployee:e));
         setEditingEmployee(null); setModal(null);
         showToast('Informations mises à jour.');
-    },[editingEmployee,isOffline,showToast]);
+    },[editingEmployee,showToast]);
 
     const handleFireEmployee = useCallback(async id=>{
-        const emp=employees.find(e=>e.id===id);
-        if(isOffline) setEmployees(p=>p.filter(e=>e.id!==id));
-        else if(emp?.docId) { await fsDelete('employees',emp.docId); setEmployees(p=>p.filter(e=>e.id!==id)); }
+        setEmployees(p=>p.filter(e=>e.id!==id));
         setEditingEmployee(null); setModal(null);
         showToast('Employé licencié.','warning');
-    },[employees,isOffline,showToast]);
+    },[employees,showToast]);
 
     const handleSaveGrades = useCallback(async newGrades=>{
         setGrades(newGrades);
-        if(!isOffline) await fsSettingRaw('grades',{list:newGrades});
-    },[isOffline]);
+    },[]);
 
     const handleSaveConfig = useCallback(async newCfg=>{
         setConfig(newCfg);
-        if(!isOffline) await fsSetting('config',newCfg);
-    },[isOffline]);
+    },[]);
 
     const handleSaveTheme = useCallback(async newT=>{
         setTheme(newT);
-        if(!isOffline) await fsSetting('theme',newT);
         showToast('Thème sauvegardé !');
-    },[isOffline,showToast]);
+    },[showToast]);
 
     const handleSaveMessages = useCallback(async()=>{
-        if(!isOffline) await fsSetting('messages',customMessages);
         setIsEditingMessages(false); showToast('Messages sauvegardés.');
-    },[customMessages,isOffline,showToast]);
+    },[customMessages,showToast]);
 
     const handleSaveContract = useCallback(async()=>{
         if(!newContract.company){ showToast('Nom entreprise requis.','error'); return; }
         if(editingContract){
-            const did=editingContract.docId||editingContract.id;
-            if(isOffline) setContracts(p=>p.map(c=>c.id===editingContract.id?{...newContract,id:editingContract.id}:c));
-            else { await fsUpdate('contracts',did,newContract); setContracts(p=>p.map(c=>c.id===editingContract.id?{...newContract,id:editingContract.id,docId:did}:c)); }
+            setContracts(p=>p.map(c=>c.id===editingContract.id?{...newContract,id:editingContract.id}:c));
             setEditingContract(null);
         } else {
-            if(isOffline) setContracts(p=>[...p,{...newContract,id:`c${Date.now()}`}]);
-            else await fsAdd('contracts',newContract);
+            setContracts(p=>[...p,{...newContract,id:`c${Date.now()}`}]);
         }
         setNewContract({company:'',date:'',endDate:'',value:'',description:'',url:'',supplementaryDocs:[]});
         showToast(editingContract?'Contrat modifié.':'Contrat ajouté.');
-    },[newContract,editingContract,isOffline,showToast]);
+    },[newContract,editingContract,showToast]);
 
     const handleDeleteContract = useCallback(async id=>{
-        const c=contracts.find(c=>c.id===id);
-        if(isOffline) setContracts(p=>p.filter(c=>c.id!==id));
-        else if(c?.docId){ await fsDelete('contracts',c.docId); setContracts(p=>p.filter(c=>c.id!==id)); }
+        setContracts(p=>p.filter(c=>c.id!==id));
         showToast('Contrat supprimé.','warning');
-    },[contracts,isOffline,showToast]);
+    },[contracts,showToast]);
 
     const handleAcceptApp = useCallback(async app=>{
         const id=`e${Date.now()}`;
         const emp={id,name:app.name,grade:grades[grades.length-1]?.name||'Junior',role:'user',password:'1234',dob:app.dob,contractUrl:'',iban:'',isServiceActive:false};
-        if(isOffline){ setEmployees(p=>[...p,emp]); setApplications(p=>p.filter(a=>a.id!==app.id)); }
-        else { await fsAdd('employees',emp); const did=app.docId||app.id; await fsDelete('applications',did); setApplications(p=>p.filter(a=>a.id!==app.id)); }
+        setEmployees(p=>[...p,emp]); setApplications(p=>p.filter(a=>a.id!==app.id));
         showToast(`${app.name} recruté !`);
         addAppNotif(`Nouvelle recrue : ${app.name}`);
-    },[grades,isOffline,showToast,addAppNotif]);
+    },[grades,showToast,addAppNotif]);
 
     const handleRejectApp = useCallback(async id=>{
-        const app=applications.find(a=>a.id===id);
-        if(isOffline) setApplications(p=>p.filter(a=>a.id!==id));
-        else if(app?.docId){ await fsDelete('applications',app.docId); setApplications(p=>p.filter(a=>a.id!==id)); }
+        setApplications(p=>p.filter(a=>a.id!==id));
         showToast('Candidature refusée.','warning');
-    },[applications,isOffline,showToast]);
+    },[applications,showToast]);
 
     const handleSubmitApp = useCallback(async()=>{
         if(!appForm.name){ showToast('Nom requis.','error'); return; }
         const a={...appForm,date:new Date().toISOString()};
-        if(isOffline) setApplications(p=>[...p,{...a,id:`app${Date.now()}`}]);
-        else await fsAdd('applications',a);
+        setApplications(p=>[...p,{...a,id:`app${Date.now()}`}]);
         setAppForm({name:'',dob:'',ageHRP:'',phoneRP:'',discord:'',availability:'',motivation:''});
         setAuthMode('login');
         showToast('Candidature envoyée !');
-    },[appForm,isOffline,showToast]);
+    },[appForm,showToast]);
 
     const handleAddTask = useCallback(async()=>{
         if(!newTask.title) return;
         const t={...newTask,id:`t${Date.now()}`,createdAt:new Date().toISOString(),createdBy:currentUser.id};
-        if(isOffline) setTasks(p=>[...p,t]);
-        else await fsAdd('tasks',t);
+        setTasks(p=>[...p,t]);
         setNewTask({title:'',desc:'',assignee:'',priority:'medium',status:'todo'});
         showToast('Tâche créée.');
-    },[newTask,currentUser,isOffline,showToast]);
+    },[newTask,currentUser,showToast]);
 
     const handleUpdateTask = useCallback(async(id,updates)=>{
-        const t=tasks.find(t=>t.id===id);
-        if(isOffline) setTasks(p=>p.map(t=>t.id===id?{...t,...updates}:t));
-        else if(t?.docId){ await fsUpdate('tasks',t.docId,updates); setTasks(p=>p.map(t=>t.id===id?{...t,...updates}:t)); }
-    },[tasks,isOffline]);
+        setTasks(p=>p.map(t=>t.id===id?{...t,...updates}:t));
+    },[tasks]);
 
     const handleDeleteTask = useCallback(async id=>{
-        const t=tasks.find(t=>t.id===id);
-        if(isOffline) setTasks(p=>p.filter(t=>t.id!==id));
-        else if(t?.docId){ await fsDelete('tasks',t.docId); setTasks(p=>p.filter(t=>t.id!==id)); }
-    },[tasks,isOffline]);
+        setTasks(p=>p.filter(t=>t.id!==id));
+    },[tasks]);
 
     const handleRenameClient = useCallback(async(oldName,newName)=>{
-        const toUpdate=invoices.filter(i=>i.client?.trim()===oldName);
         const updated=invoices.map(i=>i.client?.trim()===oldName?{...i,client:newName}:i);
         setInvoices(updated);
-        if(!isOffline){
-            const batch=writeBatch(db);
-            toUpdate.forEach(inv=>{ const did=inv.docId; if(did) batch.update(doc(db,...base,'invoices',did),{client:newName}); });
-            await batch.commit();
-        }
         if(selectedClient) setSelectedClient(p=>({...p,name:newName}));
         showToast(`Client renommé en "${newName}".`);
-    },[invoices,isOffline,selectedClient,showToast]);
+    },[invoices,selectedClient,showToast]);
 
     const handleResetStats = useCallback(async()=>{
-        if(isOffline){ setInvoices([]); ls.set('bm_invoices',[]); }
-        else {
-            const snap=await getDocs(collection(db,...base,'invoices'));
-            const batch=writeBatch(db);
-            snap.forEach(d=>batch.delete(d.ref));
-            await batch.commit();
-            setInvoices([]);
-        }
+        setInvoices([]); ls.set('bm_invoices',[]);
         setConfirmResetId(null);
         showToast('Statistiques réinitialisées.','warning');
-    },[isOffline,showToast]);
+    },[showToast]);
 
     // ====== COMPUTED WEEKLY PERSONAL ======
     const getPersonalStats = useCallback((target)=>{
@@ -1129,7 +1034,7 @@ function App() {
                         <Menu size={20}/>
                     </button>
                     <div className="flex-1"/>
-                    {isOffline && <span className="badge badge-amber"><WifiOff size={10}/>Hors-ligne</span>}
+{/* localStorage mode — always available */}
                     {/* Notification bell */}
                     <div className="relative">
                         <button className="p-2 rounded-lg hover:bg-white/5 transition-colors relative" style={{color:'var(--text-dim)'}} onClick={()=>setModal({type:'notifs'})}>
